@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>اتصال</title>
+<style>
+  :root { --ink:#14213D; --green:#1E8E5A; --red:#C0392B; --bg:#EEF3F6; --line:#D5DEE5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); font-size:20px; padding-bottom:90px; }
+  header { background:var(--ink); color:#fff; padding:18px; font-size:26px; font-weight:800; }
+  .page { display:none; padding:16px; max-width:480px; margin:0 auto; }
+  .page.active { display:block; }
+  #screen { min-height:64px; font-size:38px; text-align:center; direction:ltr; padding:10px; word-break:break-all; }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; direction:ltr; }
+  .pad button { font-size:30px; padding:18px 0; background:#fff; color:var(--ink); border:2px solid var(--line); }
+  button { font:inherit; font-weight:700; border:0; border-radius:12px; padding:14px; background:var(--ink); color:#fff; }
+  button:active { transform:scale(0.96); }
+  .call { background:var(--green) !important; color:#fff !important; }
+  .del { background:var(--red) !important; color:#fff !important; }
+  .row { display:flex; gap:8px; margin-bottom:8px; }
+  input { flex:1; min-width:0; font:inherit; padding:14px; border:2px solid var(--line); border-radius:10px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; align-items:center; gap:10px; background:#fff; border:2px solid var(--line); border-radius:12px; padding:12px; margin-bottom:8px; }
+  li .info { flex:1; }
+  li small { display:block; direction:ltr; text-align:right; opacity:0.7; }
+  .empty { text-align:center; opacity:0.6; padding:24px 0; }
+  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:#fff; border-top:2px solid var(--line); }
+  nav button { flex:1; background:transparent; color:var(--ink); border-radius:0; padding:18px 4px; border-top:5px solid transparent; }
+  nav button.active { border-top-color:var(--green); color:var(--green); }
+</style>
+</head>
+<body>
+<header>اتصال</header>
+
+<section class="page active" id="page-dial">
+  <div id="screen"></div>
+  <div class="pad" id="pad"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="call" style="flex:3" onclick="callNumber(num, '')">اتصل</button>
+    <button class="del" style="flex:1" onclick="backspace()">⌫</button>
+  </div>
+  <button style="width:100%" onclick="saveFromDial()">احفظ الرقم كجهة اتصال</button>
+</section>
+
+<section class="page" id="page-contacts">
+  <h2>جهات الاتصال</h2>
+  <div class="row"><input id="cName" placeholder="الاسم"></div>
+  <div class="row">
+    <input id="cNum" type="tel" placeholder="الرقم">
+    <button onclick="addContact()">أضف</button>
+  </div>
+  <ul id="cList"></ul>
+</section>
+
+<section class="page" id="page-recent">
+  <h2>آخر المكالمات</h2>
+  <ul id="rList"></ul>
+  <button class="del" style="width:100%" onclick="clearRecent()">امسح السجل</button>
+</section>
+
+<nav id="tabs">
+  <button data-page="dial" class="active">الأرقام</button>
+  <button data-page="contacts">الأسماء</button>
+  <button data-page="recent">السجل</button>
+</nav>
+
+<script>
+  const KEY = "call-app-v1";
+  let state = { contacts: [], recent: [] };
+  let num = "";
+  const $ = (id) => document.getElementById(id);
+
+  try { const raw = localStorage.getItem(KEY); if (raw) state = Object.assign(state, JSON.parse(raw)); } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function make(tag, text, cls) {
+    const n = document.createElement(tag);
+    if (text !== undefined) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+
+  ["1","2","3","4","5","6","7","8","9","*","0","#"].forEach((k) => {
+    const b = make("button", k);
+    b.addEventListener("click", () => { num += k; showNum(); });
+    $("pad").appendChild(b);
+  });
+  function showNum() { $("screen").textContent = num; }
+  function backspace() { num = num.slice(0, -1); showNum(); }
+
+  function callNumber(n, name) {
+    if (!n) return;
+    state.recent.unshift({ num: n, name: name || "", time: new Date().toLocaleString("ar") });
+    state.recent = state.recent.slice(0, 30);
+    save();
+    renderRecent();
+    window.location.href = "tel:" + n;
+  }
+
+  function renderContacts() {
+    const list = $("cList");
+    list.innerHTML = "";
+    if (state.contacts.length === 0) list.appendChild(make("div", "ما عندك جهات اتصال", "empty"));
+    state.contacts.forEach((c, i) => {
+      const li = make("li");
+      const info = make("div", c.name, "info");
+      info.appendChild(make("small", c.num));
+      const call = make("button", "اتصل", "call");
+      call.onclick = () => callNumber(c.num, c.name);
+      const del = make("button", "حذف", "del");
+      del.onclick = () => { state.contacts.splice(i, 1); save(); renderContacts(); };
+      li.append(info, call, del);
+      list.appendChild(li);
+    });
+  }
+  function addContact() {
+    const name = $("cName").value.trim();
+    const n = $("cNum").value.trim();
+    if (!name || !n) return;
+    state.contacts.push({ name: name, num: n });
+    $("cName").value = ""; $("cNum").value = "";
+    save(); renderContacts();
+  }
+  function saveFromDial() {
+    if (!num) return;
+    $("cNum").value = num;
+    document.querySelector('[data-page="contacts"]').click();
+    $("cName").focus();
+  }
+
+  function renderRecent() {
+    const list = $("rList");
+    list.innerHTML = "";
+    if (state.recent.length === 0) list.appendChild(make("div", "ما فيه مكالمات", "empty"));
+    state.recent.forEach((r) => {
+      const li = make("li");
+      const info = make("div", r.name || r.num, "info");
+      info.appendChild(make("small", r.time));
+      const call = make("button", "اتصل", "call");
+      call.onclick = () => callNumber(r.num, r.name);
+      li.append(info, call);
+      list.appendChild(li);
+    });
+  }
+  function clearRecent() { state.recent = []; save(); renderRecent(); }
+
+  $("tabs").addEventListener("click", (e) => {
+    const p = e.target.dataset.page;
+    if (!p) return;
+    document.querySelectorAll(".page").forEach((x) => x.classList.remove("active"));
+    document.querySelectorAll("nav button").forEach((x) => x.classList.remove("active"));
+    $("page-" + p).classList.add("active");
+    e.target.classList.add("active");
+  });
+
+  renderContacts();
+  renderRecent();
+</script>
+</body>
+  </html>
